@@ -1,5 +1,5 @@
 const amqp = require('amqplib');
-
+require('dotenv').config();
 const RABBIT_URL = process.env.RabbitMqKey;
 const EXCHANGE = 'users_exchange';
 const QUEUE = 'user_added_queue';
