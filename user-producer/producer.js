@@ -18,15 +18,15 @@ async function sendUser(user) {
   await connection.close();
 }
 
-async function deleteUserById(userId) {
+async function deleteUserById(UserId) {
   const connection = await amqp.connect(RABBIT_URL);
   const channel = await connection.createChannel();
   await channel.assertExchange(EXCHANGE, 'direct', { durable: true });
 
-  const message = JSON.stringify({ userId });
+  const message = JSON.stringify({ UserId });
   channel.publish(EXCHANGE, 'delete_user', Buffer.from(message), { persistent: true });
 
-  console.log(`🗑️ Sent request to delete user with id: ${userId}`);
+  console.log(`🗑️ Sent request to delete user with id: ${UserId}`);
 
   await channel.close();
   await connection.close();
