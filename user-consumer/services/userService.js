@@ -24,4 +24,4 @@ function deleteUserById(userId) {
   return userId;
 }
 
-module.exports = { addUser, deleteUserById };
+module.exports = { addUser, deleteUserById ,readUsers};

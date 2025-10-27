@@ -1,5 +1,5 @@
 const { createConnection, publishMessage } = require('./services/rabbit');
-const { addUser, deleteUserById } = require('./services/userService');
+const { addUser, deleteUserById, readUsers} = require('./services/userService');
 const { EXCHANGE } = require('./config.js');
 
 async function consumeUsers() {
@@ -8,13 +8,16 @@ async function consumeUsers() {
   const queues = {
     add: 'add_user_queue',
     delete: 'delete_user_queue',
+    getAllUsers: 'get_users_queue'
   };
 
   await channel.assertQueue(queues.add, { durable: true });
   await channel.assertQueue(queues.delete, { durable: true });
+  await channel.assertQueue(queues.getAllUsers, { durable: true });
 
   await channel.bindQueue(queues.add, EXCHANGE, 'add_user');
   await channel.bindQueue(queues.delete, EXCHANGE, 'delete_user');
+  await channel.bindQueue(queues.getAllUsers, EXCHANGE, 'get_users');
 
   console.log("👂 Waiting for add or delete user messages...");
 
@@ -35,12 +38,28 @@ async function consumeUsers() {
     channel.ack(msg);
   });
 
+  channel.consume(queues.getAllUsers,(msg) => {
+      if (!msg) return;
+      try {
+        const arr = readUsers();
+        console.log(arr);
+        publishMessage(channel, 'user_read', { users: arr });
+      } catch (err) {
+         console.error('❌ Error reading users:', err);
+      }
+      
+      channel.ack(msg);
+  })
+
   // --- Delete user consumer ---
   channel.consume(queues.delete, (msg) => {
     if (!msg) return;
-
+    const { UserId } = JSON.parse(msg.content.toString());
+    if (!UserId) {
+        return
+    }
     try {
-      const { UserId } = JSON.parse(msg.content.toString());
+      
       deleteUserById(UserId);
       console.log(`🗑️ Deleted user ID: ${UserId}`);
 
@@ -51,6 +70,8 @@ async function consumeUsers() {
 
     channel.ack(msg);
   });
+
+  
 }
 
 consumeUsers();

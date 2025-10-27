@@ -18,6 +18,21 @@ async function sendUser(user) {
   await connection.close();
 }
 
+
+async function getAllUsers() {
+  const connection = await amqp.connect(RABBIT_URL);
+  const channel = await connection.createChannel();
+  await channel.assertExchange(EXCHANGE, 'direct', { durable: true });
+
+  // const message = JSON.stringify({ UserId });
+  channel.publish(EXCHANGE, 'get_users', Buffer.from(JSON.stringify({})), { persistent: true });
+
+  console.log("getUser signal sended");
+  
+  await channel.close();
+  await connection.close();
+}
+
 async function deleteUserById(UserId) {
   const connection = await amqp.connect(RABBIT_URL);
   const channel = await connection.createChannel();
@@ -59,11 +74,15 @@ function parseArgs(args) {
       process.exit(1);
     }
     await deleteUserById(id);
-  } else {
+  } else if (command === 'read') {
+      await getAllUsers();
+  }
+  else {
     console.log(`
 Usage:
   node producer.js add id=1 name=Alice age=25
   node producer.js delete id=1
+  node producer.js read
     `);
   }
 })();
