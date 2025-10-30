@@ -1,77 +1,42 @@
-const { createConnection, publishMessage } = require('./services/rabbit');
-const { addUser, deleteUserById, readUsers} = require('./services/userService');
-const { EXCHANGE } = require('./config.js');
+const amqp = require('amqplib');
+require('dotenv').config();
+
+const RABBIT_URL = process.env.RabbitMqKey;
+const EXCHANGE = 'users_topic_exchange';
+const QUEUE = 'user_actions_queue';
+const ROUTING_PATTERN = 'user.*'; // Matches user.add, user.read, user.delete
+
+const handlers = require('./services/handler');
 
 async function consumeUsers() {
-  const { channel } = await createConnection();
+  const connection = await amqp.connect(RABBIT_URL);
+  const channel = await connection.createChannel();
 
-  const queues = {
-    add: 'add_user_queue',
-    delete: 'delete_user_queue',
-    getAllUsers: 'get_users_queue'
-  };
+  await channel.assertExchange(EXCHANGE, 'topic', { durable: true });
+  await channel.assertQueue(QUEUE, { durable: true });
+  await channel.bindQueue(QUEUE, EXCHANGE, ROUTING_PATTERN);
 
-  await channel.assertQueue(queues.add, { durable: true });
-  await channel.assertQueue(queues.delete, { durable: true });
-  await channel.assertQueue(queues.getAllUsers, { durable: true });
+  console.log(`👂 Listening on '${QUEUE}' for pattern '${ROUTING_PATTERN}'`);
 
-  await channel.bindQueue(queues.add, EXCHANGE, 'add_user');
-  await channel.bindQueue(queues.delete, EXCHANGE, 'delete_user');
-  await channel.bindQueue(queues.getAllUsers, EXCHANGE, 'get_users');
-
-  console.log("👂 Waiting for add or delete user messages...");
-
-  // --- Add user consumer ---
-  channel.consume(queues.add, (msg) => {
+  channel.consume(QUEUE, async (msg) => {
     if (!msg) return;
 
-    try {
-      const user = JSON.parse(msg.content.toString());
-      addUser(user);
-      console.log(`✅ Added user: ${user.name}`);
+    const routingKey = msg.fields.routingKey;
+    const data = JSON.parse(msg.content.toString());
 
-      publishMessage(channel, 'user_added', { message: `${user.name} added successfully` });
-    } catch (err) {
-      console.error('❌ Error adding user:', err);
-    }
+    console.log(`📩 Received [${routingKey}]:`, data);
 
-    channel.ack(msg);
-  });
-
-  channel.consume(queues.getAllUsers,(msg) => {
-      if (!msg) return;
+    const handler = handlers[routingKey];
+    if (handler) {
       try {
-        const arr = readUsers();
-        console.log(arr);
-        publishMessage(channel, 'user_read', { users: arr });
+        await handler(data, channel);
       } catch (err) {
-         console.error('❌ Error reading users:', err);
+        console.error(`❌ Error handling ${routingKey}:`, err);
       }
-      
-      channel.ack(msg);
-  })
-
-  // --- Delete user consumer ---
-  channel.consume(queues.delete, (msg) => {
-    if (!msg) return;
-    const { UserId } = JSON.parse(msg.content.toString());
-    if (!UserId) {
-        return
-    }
-    try {
-      
-      deleteUserById(UserId);
-      console.log(`🗑️ Deleted user ID: ${UserId}`);
-
-      publishMessage(channel, 'user_deleted', { message: `User ${UserId} deleted successfully` });
-    } catch (err) {
-      console.error('❌ Error deleting user:', err);
-    }
+    } 
 
     channel.ack(msg);
   });
-
-  
 }
 
-consumeUsers();
+consumeUsers().catch(console.error);

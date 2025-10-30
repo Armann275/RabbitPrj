@@ -2,49 +2,35 @@ require('dotenv').config();
 const amqp = require('amqplib');
 
 const RABBIT_URL = process.env.RabbitMqKey;
-const EXCHANGE = 'users_exchange';
+const EXCHANGE = 'users_topic_exchange';
 
-async function sendUser(user) {
+// 🧩 Helper to connect & publish
+async function publish(routingKey, message) {
   const connection = await amqp.connect(RABBIT_URL);
   const channel = await connection.createChannel();
-  await channel.assertExchange(EXCHANGE, 'direct', { durable: true });
 
-  const msg = JSON.stringify(user);
-  channel.publish(EXCHANGE, 'add_user', Buffer.from(msg), { persistent: true });
+  // Use topic exchange (not direct)
+  await channel.assertExchange(EXCHANGE, 'topic', { durable: true });
 
-  console.log("📤 Sent user:", msg);
+  channel.publish(EXCHANGE, routingKey, Buffer.from(JSON.stringify(message)), { persistent: true });
+  console.log(`📤 Sent to [${routingKey}]:`, message);
 
   await channel.close();
   await connection.close();
 }
 
+// --- Individual actions ---
+
+async function sendUser(user) {
+  await publish('user.add', user);
+}
 
 async function getAllUsers() {
-  const connection = await amqp.connect(RABBIT_URL);
-  const channel = await connection.createChannel();
-  await channel.assertExchange(EXCHANGE, 'direct', { durable: true });
-
-  // const message = JSON.stringify({ UserId });
-  channel.publish(EXCHANGE, 'get_users', Buffer.from(JSON.stringify({})), { persistent: true });
-
-  console.log("getUser signal sended");
-  
-  await channel.close();
-  await connection.close();
+  await publish('user.read', {});
 }
 
 async function deleteUserById(UserId) {
-  const connection = await amqp.connect(RABBIT_URL);
-  const channel = await connection.createChannel();
-  await channel.assertExchange(EXCHANGE, 'direct', { durable: true });
-
-  const message = JSON.stringify({ UserId });
-  channel.publish(EXCHANGE, 'delete_user', Buffer.from(message), { persistent: true });
-
-  console.log(`🗑️ Sent request to delete user with id: ${UserId}`);
-
-  await channel.close();
-  await connection.close();
+  await publish('user.delete', { UserId });
 }
 
 // ----------- CLI Logic -----------
@@ -67,16 +53,18 @@ function parseArgs(args) {
       process.exit(1);
     }
     await sendUser(user);
-  } else if (command === 'delete') {
+  } 
+  else if (command === 'delete') {
     const { id } = parseArgs(args);
     if (!id) {
       console.error("❌ Please provide user id, e.g. node producer.js delete id=1");
       process.exit(1);
     }
     await deleteUserById(id);
-  } else if (command === 'read') {
-      await getAllUsers();
-  }
+  } 
+  else if (command === 'read') {
+    await getAllUsers();
+  } 
   else {
     console.log(`
 Usage:

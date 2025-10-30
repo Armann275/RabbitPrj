@@ -5,7 +5,7 @@ const { RABBIT_URL, EXCHANGE } = require('../config');
 async function createConnection() {
   const connection = await amqp.connect(RABBIT_URL);
   const channel = await connection.createChannel();
-  await channel.assertExchange(EXCHANGE, 'direct', { durable: true });
+  await channel.assertExchange(EXCHANGE, 'topic', { durable: true });
   return { connection, channel };
 }
 
